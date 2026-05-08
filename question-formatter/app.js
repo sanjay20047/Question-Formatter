@@ -87,6 +87,14 @@
     let s = src.replace(/\r\n?/g, '\n').replace(/^﻿/, '');
     s = s.split('\n').map(l => l.replace(/[ \t]+$/g, '')).join('\n');
 
+    // Auto-format plain "Label:" patterns. This is the bridge between
+    // CloudLab-style sources (which the user writes as plain text without
+    // any markdown markers) and the formatted target output (where every
+    // section label is bold and field groups are bullet lists). Lines that
+    // already use markdown markers (**bold**, - bullet, # heading, ...)
+    // are preserved untouched, so Playwright sources are unaffected.
+    s = autoFormatPlainLabels(s);
+
     // Blank line before a heading, in case the user pasted them tightly.
     s = s.replace(/([^\n])\n(#{1,6} )/g, '$1\n\n$2');
 
@@ -102,12 +110,17 @@
       return prev + '\n\n' + rule;
     });
 
-    // Collapse blank lines after a bold-only label line (e.g.
-    // "**Lab Scenario:**\n\nDescription"). With breaks: true this turns
-    // the two-paragraph form into one <p> with <br>, matching the tighter
-    // form some users write ("**Lab Scenario:**\nDescription") so spacing
-    // stays uniform across a document.
-    s = s.replace(/^(\*\*[^*\n]+\*\*)[ \t]*\n\n+(?=[^\s*])/gm, '$1\n');
+    // Collapse blank lines after a bold-prefixed line (label-only OR
+    // label-with-content), so long as the next paragraph isn't itself a
+    // bold-prefixed section. Examples:
+    //   "**Lab Scenario:**\n\nDescription" → "**Lab Scenario:**\nDescription"
+    //   "**1. `name`**\n\nVerify..."        → "**1. `name`**\nVerify..."
+    //   "**Lab Title:** Azure...\n\n**Lab Scenario:**" — preserved (next
+    //                                        line starts with **, kept apart)
+    // With breaks: true the collapsed form renders as one <p> with <br>,
+    // which gives us the visual gap of a single line break between label
+    // and description (instead of an extra paragraph margin).
+    s = s.replace(/^(\*\*[^*\n]+\*\*[^\n]*)\n\n+(?=[^\s*])/gm, '$1\n');
 
     s = collapseListBlankLines(s);
     s = s.replace(/\n{3,}/g, '\n\n');
@@ -131,6 +144,152 @@
       out.push(lines[i]);
     }
     return out.join('\n');
+  }
+
+  /* ----------------------------------------------------------------
+     autoFormatPlainLabels
+     ----------------------------------------------------------------
+     Turns plain-text "label" sources (the user's CloudLab style) into
+     proper markdown:
+
+       Source ("Label" lines have no markdown markers):
+         Lab Scenario:
+         CloudFirst Solutions, a SaaS company, has been...
+
+         Lab Objective:
+         Deploy a Log Analytics workspace as the central hub...
+         Create a storage account to serve as a monitored resource.
+         Enable diagnostic settings...
+
+         Storage Account:
+         Name: [your_resource_group_name]monstore
+         Region: East US
+
+       After auto-format:
+         **Lab Scenario:**
+         CloudFirst Solutions, a SaaS company, has been...
+
+         **Lab Objective:**
+         - Deploy a Log Analytics workspace as the central hub...
+         - Create a storage account to serve as a monitored resource.
+         - Enable diagnostic settings...
+
+         **Storage Account:**
+         - Name: [your_resource_group_name]monstore
+         - Region: East US
+
+     Rules
+       1. A line that already starts with a markdown marker (`**bold`,
+          `- item`, `# heading`, `> quote`, `` ` ``, `|`, `1. ordered`)
+          is preserved untouched. So Playwright sources, which already
+          use proper markdown, are NOT changed.
+       2. A "label-only" line (`Lab Scenario:` — line ends with `:`,
+          short prefix, starts with capital) is wrapped in `**...**`.
+       3. A "label-value" line (`Task 1: Create...` — short prefix,
+          colon, then content) gets `**Label:**` bolding around the
+          label part — UNLESS it lives inside a bullet group (see #4),
+          in which case it stays plain so it reads as a field, not a
+          section heading.
+       4. A label-only line followed DIRECTLY (no blank line between)
+          by 2+ non-blank, non-label-only content lines starts a
+          "bullet group": each of those content lines gets a `- `
+          prefix. This is what turns plain Lab-Objective sentences
+          and plain Storage-Account fields into bullet lists. A
+          single-line follow-up stays a paragraph, so a label like
+          "Lab Scenario:" with one descriptive paragraph isn't
+          wrongly bulleted.
+     ---------------------------------------------------------------- */
+  function autoFormatPlainLabels(source) {
+    if (!source) return '';
+    const lines = source.split('\n');
+    const types = lines.map(classifyLineForLabels);
+
+    const asBullet = new Array(lines.length).fill(false);
+    let i = 0;
+    while (i < lines.length) {
+      if (types[i] === 'LABEL_ONLY') {
+        const j0 = i + 1;
+        if (j0 >= lines.length || types[j0] === 'BLANK') {
+          // Blank line right after the label — content is a separate
+          // section, not a bullet group.
+          i = j0;
+          continue;
+        }
+        let j = j0;
+        while (j < lines.length && types[j] !== 'BLANK' && types[j] !== 'LABEL_ONLY') {
+          j++;
+        }
+        if (j - j0 >= 2) {
+          for (let k = j0; k < j; k++) asBullet[k] = true;
+        }
+        i = j;
+      } else {
+        i++;
+      }
+    }
+
+    const out = [];
+    for (let k = 0; k < lines.length; k++) {
+      const line = lines[k];
+      const trimmed = line.trim();
+      const indent = line.match(/^\s*/)[0];
+
+      switch (types[k]) {
+        case 'BLANK':
+        case 'PRESERVED':
+          out.push(line);
+          break;
+        case 'LABEL_ONLY':
+          out.push(`${indent}**${trimmed}**`);
+          break;
+        case 'LABEL_VALUE':
+          if (asBullet[k]) {
+            // Field inside a bullet group — keep "Field: value" plain,
+            // just add the bullet marker. Matches the user's reference
+            // (`- Name: novalake`, label not separately bolded).
+            out.push(`${indent}- ${trimmed}`);
+          } else {
+            // Top-level "Label: value" line — bold just the label part
+            // (everything up to and including the first colon).
+            out.push(`${indent}${trimmed.replace(/^([^:]+:)/, '**$1**')}`);
+          }
+          break;
+        case 'PARAGRAPH':
+          if (asBullet[k]) {
+            out.push(`${indent}- ${trimmed}`);
+          } else {
+            out.push(line);
+          }
+          break;
+      }
+    }
+    return out.join('\n');
+  }
+
+  function classifyLineForLabels(line) {
+    const trimmed = line.trim();
+    if (trimmed === '') return 'BLANK';
+
+    // Already-formatted lines — preserve as-is.
+    if (trimmed.startsWith('**') ||
+        trimmed.startsWith('- ') ||
+        trimmed.startsWith('* ') ||
+        trimmed.startsWith('+ ') ||
+        trimmed.startsWith('#') ||
+        trimmed.startsWith('>') ||
+        trimmed.startsWith('`') ||
+        trimmed.startsWith('|') ||
+        /^\d+[.)]\s/.test(trimmed)) {
+      return 'PRESERVED';
+    }
+
+    // Label-only — capital-led, ends with ":", reasonable label length.
+    if (/^[A-Z][\w\s\-&()./'"]{0,60}:$/.test(trimmed)) return 'LABEL_ONLY';
+
+    // Label-value — capital-led "Word(s):" then space + content.
+    if (/^[A-Z][\w\s\-&()./'"]{0,60}:\s+\S/.test(trimmed)) return 'LABEL_VALUE';
+
+    return 'PARAGRAPH';
   }
 
   // ============================================================
