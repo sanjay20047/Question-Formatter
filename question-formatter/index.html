@@ -365,12 +365,83 @@
       div.innerHTML = output.innerHTML;
 
       applyCopyInlineStyles(div);
-      convertTablesToPre(div);     // tables → monospace ASCII <pre> (Examly handles <pre> fine)
-      addHeadingSpacers(div);      // blank <p> before & after each heading
-      flattenListsToParagraphs(div);
-      appendFinalSentinels(div);   // neutral trailing blocks → bullet can't be "last element"
+      convertTablesToPre(div);          // tables → monospace ASCII <pre>
+      flattenListsToParagraphs(div);    // <ul>/<ol> → single <p> with <br> rows
+      mergeTestCaseSections(div);       // header + description + bullets → one <p>
+      applyUniformBlockSpacing(div);    // every block gets margin: 0 0 1em 0 !important
+      appendFinalSentinels(div);
 
       return div.innerHTML;
+    }
+
+    /* The structural fix for "2 lines of gap" between a test-case header and
+       its description: we don't rely on paragraph margins between separate
+       <p> elements, because Examly's editor applies its own margins on paste
+       and inline overrides aren't always honored. Instead, every test-case
+       section — header + description + bullet block — is collapsed into ONE
+       <p>, with the lines separated by <br>. The destination editor only
+       sees one paragraph per test case, so the only inter-paragraph gap is
+       between adjacent test cases (the gap the user actually wants).
+
+       Heuristic for "this <p> starts a new test case": its first child is a
+       <strong> / <b> tag (which is what `**3. \`name\`**` becomes once
+       marked parses it). The flattened-bullets <p>s start with a styled
+       <span>, so they don't trigger this and get merged into the run.        */
+    function mergeTestCaseSections(container) {
+      const isStarter = (el) => {
+        if (!el || el.tagName !== 'P') return false;
+        const first = el.firstElementChild;
+        return !!first && (first.tagName === 'STRONG' || first.tagName === 'B');
+      };
+
+      const els = Array.from(container.children);
+      const result = [];
+      let run = null; // the <p> we're currently merging into
+
+      const flush = () => {
+        if (run) { result.push(run); run = null; }
+      };
+
+      els.forEach(el => {
+        if (el.tagName === 'P') {
+          if (isStarter(el)) {
+            // Starter — close any prior run and begin a new one with this <p>.
+            flush();
+            run = el;
+          } else if (run) {
+            // Continuation paragraph (description, flattened bullets, etc.)
+            // Merge into the open run by appending a <br> + el's children.
+            run.appendChild(document.createElement('br'));
+            while (el.firstChild) run.appendChild(el.firstChild);
+            // el is now empty; we won't push it.
+          } else {
+            // No open run yet — this <p> is a continuation but has nothing
+            // to merge with. Treat it as its own block.
+            result.push(el);
+          }
+        } else {
+          // Non-<p> block (heading, <pre>, <table>, sentinel <div>, etc.).
+          flush();
+          result.push(el);
+        }
+      });
+      flush();
+
+      while (container.firstChild) container.firstChild.remove();
+      result.forEach(el => container.appendChild(el));
+    }
+
+    /* Force every block element to the same margin so the destination editor
+       can't introduce inconsistent spacing. !important inline beats most
+       editor stylesheets. margin-top: 0 + margin-bottom: 1em yields ~1 line
+       of gap between adjacent blocks (with margin collapse it's still 1em).  */
+    function applyUniformBlockSpacing(container) {
+      container.querySelectorAll('p, h1, h2, h3, h4, pre, table').forEach(el => {
+        el.style.setProperty('margin-top', '0', 'important');
+        el.style.setProperty('margin-bottom', '1em', 'important');
+        el.style.setProperty('padding-top', '0', 'important');
+        el.style.setProperty('padding-bottom', '0', 'important');
+      });
     }
 
     /* Examly's editor auto-promotes the very last block of pasted content to
