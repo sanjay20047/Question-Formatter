@@ -269,6 +269,28 @@
         return prev + '\n\n' + dashes;
       });
 
+      // Collapse blank lines after a "bold-only" line — e.g. test-case
+      // headers like `**3. \`confirm_button_visible\`**`. Without this, a
+      // user who wrote:
+      //
+      //   **3. `name`**
+      //
+      //   Description here.
+      //
+      // gets two separate <p>s in the rendered HTML, which Examly draws
+      // with full paragraph-margin between them — a 2-line gap. A user
+      // who wrote the same thing tightly:
+      //
+      //   **3. `name`**
+      //   Description here.
+      //
+      // gets a single <p> with <br> (because breaks: true), which renders
+      // as a 1-line gap. Both forms appear in the same source file, so
+      // the spacing comes out inconsistent. Collapsing the blank line
+      // makes every test-case header behave like the tight form, giving
+      // uniform 1-line spacing across the whole document.
+      s = s.replace(/^(\*\*[^*\n]+\*\*)[ \t]*\n\n+(?=[^\s*])/gm, '$1\n');
+
       s = collapseListBlankLines(s);
 
       // Collapse 3+ blank lines into 2.
@@ -436,12 +458,14 @@
        render this as a blank line, giving the user the requested one-line gap
        between section headings ("Scenario", "Task", …) and their content.     */
     function addHeadingSpacers(container) {
+      // !important inline overrides Examly's default <p> margins. Without
+      // it, the spacer's own margin stacks on top of the <br>'s line height
+      // and the gap becomes 2+ lines instead of the intended 1.
       const makeSpacer = () => {
         const s = document.createElement('p');
         s.innerHTML = '<br>';
-        s.style.margin = '0';
-        s.style.padding = '0';
-        s.style.lineHeight = '1.2';
+        s.setAttribute('style',
+          'margin: 0 !important; padding: 0 !important; line-height: 1.4; font-size: 14px;');
         return s;
       };
 
