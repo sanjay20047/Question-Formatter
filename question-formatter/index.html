@@ -368,7 +368,8 @@
       convertTablesToPre(div);          // tables → monospace ASCII <pre>
       flattenListsToParagraphs(div);    // <ul>/<ol> → single <p> with <br> rows
       mergeTestCaseSections(div);       // header + description + bullets → one <p>
-      applyUniformBlockSpacing(div);    // every block gets margin: 0 0 1em 0 !important
+      forceZeroBlockMargins(div);       // strip all block margins
+      insertBlankLineSpacers(div);      // <p><br></p> between every adjacent pair
       appendFinalSentinels(div);
 
       return div.innerHTML;
@@ -431,17 +432,42 @@
       result.forEach(el => container.appendChild(el));
     }
 
-    /* Force every block element to the same margin so the destination editor
-       can't introduce inconsistent spacing. !important inline beats most
-       editor stylesheets. margin-top: 0 + margin-bottom: 1em yields ~1 line
-       of gap between adjacent blocks (with margin collapse it's still 1em).  */
-    function applyUniformBlockSpacing(container) {
-      container.querySelectorAll('p, h1, h2, h3, h4, pre, table').forEach(el => {
-        el.style.setProperty('margin-top', '0', 'important');
-        el.style.setProperty('margin-bottom', '1em', 'important');
+    /* Strip every block element's margins. Inter-block spacing is then
+       controlled entirely by explicit <p><br></p> spacers (insertBlankLineSpacers),
+       so the destination editor's stylesheet can't either inflate gaps
+       (when its <p> margin is large) or zero them out (when it isn't).        */
+    function forceZeroBlockMargins(container) {
+      container.querySelectorAll('p, h1, h2, h3, h4, h5, h6, pre, table, ul, ol').forEach(el => {
+        el.style.setProperty('margin', '0', 'important');
         el.style.setProperty('padding-top', '0', 'important');
         el.style.setProperty('padding-bottom', '0', 'important');
       });
+    }
+
+    /* Insert one <p><br></p> spacer between every pair of adjacent block
+       children of the container. With the surrounding blocks pinned to
+       margin: 0 (forceZeroBlockMargins), the spacer's <br> contributes a
+       single line height of vertical space — exactly one blank line.
+
+       This produces the user's requested format:
+         - Within a test case (one merged <p>): <br> between lines, no gap
+         - Between adjacent test cases: 1 blank line (the spacer)
+         - Around headings: 1 blank line on each side                          */
+    function insertBlankLineSpacers(container) {
+      const els = Array.from(container.children);
+      const result = [];
+      els.forEach((el, idx) => {
+        result.push(el);
+        if (idx < els.length - 1) {
+          const spacer = document.createElement('p');
+          spacer.innerHTML = '<br>';
+          spacer.style.setProperty('margin', '0', 'important');
+          spacer.style.setProperty('padding', '0', 'important');
+          result.push(spacer);
+        }
+      });
+      while (container.firstChild) container.firstChild.remove();
+      result.forEach(el => container.appendChild(el));
     }
 
     /* Examly's editor auto-promotes the very last block of pasted content to
