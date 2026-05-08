@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Question Formatter</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    /* Output document styling — applied inside #output so it doesn't bleed into the chrome */
+    #output {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #1f2937;
+      line-height: 1.7;
+    }
+    #output h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0 0 1.25rem 0;
+      letter-spacing: -0.01em;
+      border-bottom: 2px solid #e5e7eb;
+      padding-bottom: 0.5rem;
+    }
+    #output h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 1.75rem 0 0.6rem 0;
+    }
+    #output h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #111827;
+      margin: 1.25rem 0 0.5rem 0;
+    }
+    #output p {
+      margin: 0.6rem 0;
+    }
+    #output ul {
+      list-style: disc;
+      padding-left: 1.5rem;
+      margin: 0.5rem 0;
+    }
+    #output ol {
+      list-style: decimal;
+      padding-left: 1.75rem;
+      margin: 0.5rem 0;
+    }
+    #output li {
+      margin: 0.25rem 0;
+      padding-left: 0.15rem;
+    }
+    #output li > ul, #output li > ol {
+      margin: 0.25rem 0;
+    }
+    #output strong {
+      font-weight: 700;
+      color: #0f172a;
+    }
+    #output a {
+      color: #2563eb;
+      text-decoration: underline;
+    }
+    #output code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      padding: 0.15rem 0.4rem;
+      border-radius: 0.3rem;
+      font-size: 0.92em;
+      border: 1px solid #e2e8f0;
+    }
+    #output pre {
+      background-color: #0f172a;
+      color: #e2e8f0;
+      padding: 1rem 1.1rem;
+      border-radius: 0.55rem;
+      overflow-x: auto;
+      margin: 1rem 0;
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+    #output pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      border: none;
+      font-size: inherit;
+    }
+    #output blockquote {
+      border-left: 4px solid #cbd5e1;
+      padding: 0.25rem 0 0.25rem 1rem;
+      color: #475569;
+      margin: 1rem 0;
+      font-style: italic;
+    }
+    #output .table-wrap {
+      overflow-x: auto;
+      max-width: 100%;
+      margin: 1rem 0;
+      border-radius: 0.4rem;
+    }
+    #output table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 0;
+      font-size: 0.95rem;
+      border: 1px solid #cbd5e1;
+    }
+    #output th, #output td {
+      border: 1px solid #cbd5e1;
+      padding: 0.65rem 0.85rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    #output th {
+      background-color: #f1f5f9;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    #output tr:nth-child(even) td {
+      background-color: #f8fafc;
+    }
+    #output hr {
+      border: 0;
+      border-top: 1px solid #e5e7eb;
+      margin: 1.5rem 0;
+    }
+
+    #markdownInput {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.875rem;
+      line-height: 1.55;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background: #0f172a;
+      color: #fff;
+      padding: 0.7rem 1.1rem;
+      border-radius: 0.5rem;
+      font-size: 0.9rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 180ms ease, transform 180ms ease;
+      pointer-events: none;
+      z-index: 50;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-slate-900">Question Formatter</h1>
+        <p class="text-xs text-slate-500 mt-0.5">Turn raw Playwright question markdown into a clean, copy-ready document.</p>
+      </div>
+      <div class="text-xs text-slate-400">Local · No data leaves your browser</div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 py-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <section class="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col">
+        <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
+          <h2 class="font-semibold text-slate-900">Input</h2>
+          <div class="flex items-center gap-2">
+            <label for="fileInput"
+                   class="cursor-pointer inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition">
+              Upload .md
+            </label>
+            <input id="fileInput" type="file" accept=".md,.markdown,text/markdown,text/plain" class="hidden" />
+            <button id="clearBtn"
+                    class="text-xs font-medium px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+              Clear
+            </button>
+            <button id="sampleBtn"
+                    class="text-xs font-medium px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+              Load sample
+            </button>
+          </div>
+        </div>
+        <div class="p-5 flex-1 flex flex-col">
+          <label for="markdownInput" class="text-xs font-medium text-slate-600 mb-1.5">Paste your markdown below</label>
+          <textarea id="markdownInput"
+                    placeholder="# Your question title&#10;&#10;## Scenario&#10;..."
+                    class="w-full flex-1 min-h-[480px] resize-y rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400"></textarea>
+          <p class="text-xs text-slate-500 mt-2">Tip: tight lists, code spans, and bold titles are all preserved on copy.</p>
+        </div>
+      </section>
+
+      <section class="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col">
+        <div class="px-5 py-3 border-b border-slate-200 sticky top-[64px] bg-white z-20 rounded-t-xl flex items-center justify-between">
+          <h2 class="font-semibold text-slate-900">Generated Output</h2>
+          <div class="flex items-center gap-2">
+            <button id="copyRichBtn"
+                    class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition">
+              Copy Rich Text
+            </button>
+            <button id="copyMdBtn"
+                    class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition">
+              Copy as Markdown
+            </button>
+          </div>
+        </div>
+        <div class="p-7">
+          <article id="output" class="max-w-none">
+            <p class="text-slate-400 italic">Your formatted question will appear here.</p>
+          </article>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <div id="toast" class="toast">Copied!</div>
+
+  <script>
+    const markdownInput = document.getElementById('markdownInput');
+    const fileInput = document.getElementById('fileInput');
+    const clearBtn = document.getElementById('clearBtn');
+    const sampleBtn = document.getElementById('sampleBtn');
+    const output = document.getElementById('output');
+    const copyRichBtn = document.getElementById('copyRichBtn');
+    const copyMdBtn = document.getElementById('copyMdBtn');
+    const toast = document.getElementById('toast');
+
+    marked.setOptions({
+      gfm: true,
+      breaks: true,        // single newlines → <br> (matches how the source markdown is written)
+      headerIds: false,
+      mangle: false
+    });
+
+    /* ---------- Markdown normalization ----------
+       Goal: produce HTML that pastes cleanly into rich-text editors (Notion,
+       Examly, Google Docs). The big enemy is "loose lists" — when there are
+       blank lines between list items, marked wraps each <li>'s content in a
+       <p>, and many editors then render that as an empty bullet + a paragraph
+       (you saw the empty "3.", "4." rows in the screenshots). So we collapse
+       the blank lines between consecutive list items before parsing.            */
+    function normalizeMarkdown(src) {
+      if (!src) return '';
+      let s = src.replace(/\r\n?/g, '\n').replace(/^﻿/, '');
+      s = s.split('\n').map(l => l.replace(/[ \t]+$/g, '')).join('\n');
+
+      // Ensure blank line before headings, in case the user pasted them tightly.
+      s = s.replace(/([^\n])\n(#{1,6} )/g, '$1\n\n$2');
+
+      // Ensure blank line before tables that follow a paragraph.
+      s = s.replace(/([^\n])\n(\|.+\|)\n(\|[\s\-:|]+\|)/g, '$1\n\n$2\n$3');
+
+      // Prevent setext-heading misparsing: when a non-blank line is immediately
+      // followed by --- / === / *** / ___, marked turns the text into an <h2>/<h1>.
+      // That's why "Tests 23-25 confirm…" was rendering as a giant heading. Insert
+      // a blank line so the underline becomes a proper <hr> instead.
+      s = s.replace(/^([^\n]+)\n([-*_]{3,}|={3,})[ \t]*$/gm, function(m, prev, dashes) {
+        if (prev.trim() === '') return m;
+        return prev + '\n\n' + dashes;
+      });
+
+      s = collapseListBlankLines(s);
+
+      // Collapse 3+ blank lines into 2.
+      s = s.replace(/\n{3,}/g, '\n\n');
+
+      return s.trim();
+    }
+
+    function collapseListBlankLines(text) {
+      const lines = text.split('\n');
+      const out = [];
+      const isListLine = (l) => /^[ \t]*([-*+]|\d+\.)\s/.test(l);
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() === '') {
+          let prev = i - 1;
+          while (prev >= 0 && lines[prev].trim() === '') prev--;
+          let next = i + 1;
+          while (next < lines.length && lines[next].trim() === '') next++;
+          if (prev >= 0 && next < lines.length && isListLine(lines[prev]) && isListLine(lines[next])) {
+            continue; // drop the blank — keeps the list "tight"
+          }
+        }
+        out.push(lines[i]);
+      }
+      return out.join('\n');
+    }
+
+    /* ---------- HTML post-processing ----------
+       Strip <p> wrappers from inside <li>. Many rich-text editors interpret
+       <li><p>X</p></li> as two list items (empty + X). With this fix, each
+       <li> contains text directly, so the paste keeps the same numbering and
+       no phantom empty bullets appear.                                          */
+    function postProcessHtml(html) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+
+      tmp.querySelectorAll('li').forEach(li => {
+        const ps = Array.from(li.children).filter(c => c.tagName === 'P');
+        ps.forEach((p, idx) => {
+          if (idx > 0) li.insertBefore(document.createElement('br'), p);
+          while (p.firstChild) li.insertBefore(p.firstChild, p);
+          p.remove();
+        });
+      });
+
+      // Wrap tables in a horizontally-scrollable container so wide URL columns
+      // don't push the output panel sideways.
+      tmp.querySelectorAll('table').forEach(table => {
+        if (table.parentElement && table.parentElement.classList.contains('table-wrap')) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'table-wrap';
+        table.parentNode.insertBefore(wrap, table);
+        wrap.appendChild(table);
+      });
+
+      return tmp.innerHTML;
+    }
+
+    /* ---------- Build paste-friendly HTML for the clipboard ----------
+       Two things matter here:
+       1) The on-screen <style> rules don't travel with the clipboard, so we
+          apply minimal inline styles to tables, code, pre, and headings.
+       2) Many rich-text editors (Examly, certain CMS editors) mangle <ol>/<ul>
+          on paste — they insert phantom empty <li>s, sometimes 2-3 per real
+          item. To dodge this entirely, we *don't ship lists at all* on the
+          clipboard. Every <li> becomes a <p> whose text starts with "1. " or
+          "• ". The editor sees plain paragraphs, can't fragment them, and the
+          user sees a numbered/bulleted layout in the destination thanks to
+          the prefix character.                                                  */
+    function buildCopyHtml() {
+      const div = document.createElement('div');
+      div.innerHTML = output.innerHTML;
+
+      applyCopyInlineStyles(div);
+      convertTablesToPre(div);     // tables → monospace ASCII <pre> (Examly handles <pre> fine)
+      addHeadingSpacers(div);      // blank <p> before & after each heading
+      flattenListsToParagraphs(div);
+      appendFinalSentinels(div);   // neutral trailing blocks → bullet can't be "last element"
+
+      return div.innerHTML;
+    }
+
+    /* Examly's editor auto-promotes the very last block of pasted content to
+       a heading-like style — that's why "Tests 23-25 confirm…" kept rendering
+       huge no matter what inline styles we put on the <p>. The defense is
+       structural: append two neutral sentinels (a styled <p> and a <div>) so
+       the user's actual last bullet is no longer the trailing block. The
+       editor promotes the sentinel instead, where it's invisible.            */
+    function appendFinalSentinels(div) {
+      const p = document.createElement('p');
+      p.innerHTML = '<br>';
+      p.style.margin = '0';
+      p.style.padding = '0';
+      p.style.fontWeight = 'normal';
+      p.style.fontSize = '14px';
+      p.style.lineHeight = '1';
+      div.appendChild(p);
+
+      const tail = document.createElement('div');
+      tail.innerHTML = '&nbsp;';
+      tail.style.margin = '0';
+      tail.style.padding = '0';
+      tail.style.fontWeight = 'normal';
+      tail.style.fontSize = '14px';
+      tail.style.lineHeight = '1';
+      tail.style.color = 'transparent';
+      div.appendChild(tail);
+    }
+
+    /* Replace each <table> with a <pre> block whose text content is an ASCII
+       rendering of the table. Examly's editor strips/breaks real <table>
+       elements on paste, but it preserves <pre>. The result is a fixed-width
+       table that survives any rich-text editor.                                 */
+    function convertTablesToPre(container) {
+      container.querySelectorAll('table').forEach(table => {
+        const rows = Array.from(table.querySelectorAll('tr'));
+        if (!rows.length) return;
+
+        const cellRows = rows.map(row =>
+          Array.from(row.querySelectorAll('th, td')).map(cell =>
+            (cell.textContent || '').replace(/\s+/g, ' ').trim()
+          )
+        );
+
+        const numCols = Math.max(...cellRows.map(r => r.length));
+        const colWidths = new Array(numCols).fill(0);
+        cellRows.forEach(row => {
+          for (let i = 0; i < numCols; i++) {
+            const len = (row[i] || '').length;
+            if (len > colWidths[i]) colWidths[i] = len;
+          }
+        });
+
+        const formatRow = (row) =>
+          colWidths.map((w, i) => (row[i] || '').padEnd(w)).join(' | ');
+
+        const lines = [formatRow(cellRows[0])];
+        lines.push(colWidths.map(w => '-'.repeat(w)).join('-+-'));
+        for (let i = 1; i < cellRows.length; i++) {
+          lines.push(formatRow(cellRows[i]));
+        }
+
+        const pre = document.createElement('pre');
+        pre.style.background = '#f3f4f6';
+        pre.style.padding = '10px 12px';
+        pre.style.borderRadius = '4px';
+        pre.style.fontFamily = 'Consolas, Monaco, monospace';
+        pre.style.fontSize = '0.9em';
+        pre.style.whiteSpace = 'pre';
+        pre.style.overflowX = 'auto';
+        pre.style.margin = '8px 0';
+        pre.style.border = '1px solid #ddd';
+        pre.style.color = '#0f172a';
+        pre.textContent = lines.join('\n');
+
+        // The display wraps tables in <div class="table-wrap"> — replace the
+        // wrapper if present so we don't leave an empty container behind.
+        const wrapper = table.closest('.table-wrap');
+        const target = wrapper || table;
+        target.parentNode.replaceChild(pre, target);
+      });
+    }
+
+    /* After every h1/h2/h3, insert an empty <p> with a <br> inside. Editors
+       render this as a blank line, giving the user the requested one-line gap
+       between section headings ("Scenario", "Task", …) and their content.     */
+    function addHeadingSpacers(container) {
+      const makeSpacer = () => {
+        const s = document.createElement('p');
+        s.innerHTML = '<br>';
+        s.style.margin = '0';
+        s.style.padding = '0';
+        s.style.lineHeight = '1.2';
+        return s;
+      };
+
+      const isSpacer = (el) =>
+        el && el.tagName === 'P' &&
+        el.childNodes.length === 1 &&
+        el.firstChild && el.firstChild.tagName === 'BR' &&
+        el.textContent.trim() === '';
+      const isHeading = (el) => el && /^H[1-6]$/.test(el.tagName);
+
+      // Spacer AFTER every heading — blank line between heading and content.
+      container.querySelectorAll('h1, h2, h3').forEach(h => {
+        h.insertAdjacentElement('afterend', makeSpacer());
+      });
+
+      // Spacer BEFORE every h2/h3 — blank line above each section heading.
+      // This is what fixes the "table butts up against Task heading" gap.
+      // Skip if the previous block is already a heading or its trailing
+      // spacer, so consecutive headings (e.g. h1 then h2) don't get a
+      // double blank line between them.
+      container.querySelectorAll('h2, h3').forEach(h => {
+        const prev = h.previousElementSibling;
+        if (!prev) return;
+        if (isHeading(prev)) return;
+        if (isSpacer(prev) && isHeading(prev.previousElementSibling)) return;
+        h.insertAdjacentElement('beforebegin', makeSpacer());
+      });
+    }
+
+    function applyCopyInlineStyles(div) {
+      div.querySelectorAll('table').forEach(t => {
+        t.setAttribute('border', '1');
+        t.style.borderCollapse = 'collapse';
+        t.style.width = '100%';
+      });
+      div.querySelectorAll('th, td').forEach(c => {
+        c.style.border = '1px solid #999';
+        c.style.padding = '6px 10px';
+        c.style.verticalAlign = 'top';
+        c.style.textAlign = 'left';
+      });
+      div.querySelectorAll('th').forEach(t => {
+        t.style.background = '#f3f4f6';
+        t.style.fontWeight = 'bold';
+      });
+      div.querySelectorAll('code').forEach(c => {
+        if (c.parentElement && c.parentElement.tagName === 'PRE') return;
+        c.style.fontFamily = 'Consolas, Monaco, monospace';
+        c.style.background = '#f3f4f6';
+        c.style.padding = '1px 4px';
+        c.style.borderRadius = '3px';
+        c.style.fontSize = '0.95em';
+      });
+      div.querySelectorAll('pre').forEach(p => {
+        p.style.background = '#f3f4f6';
+        p.style.padding = '10px 12px';
+        p.style.borderRadius = '4px';
+        p.style.fontFamily = 'Consolas, Monaco, monospace';
+        p.style.fontSize = '0.9em';
+        p.style.whiteSpace = 'pre-wrap';
+        p.querySelectorAll('code').forEach(c => {
+          c.style.background = 'transparent';
+          c.style.padding = '0';
+          c.style.fontFamily = 'inherit';
+          c.style.border = 'none';
+        });
+      });
+      div.querySelectorAll('h1').forEach(el => {
+        el.style.fontSize = '24px';
+        el.style.fontWeight = 'bold';
+        el.style.margin = '0 0 12px 0';
+      });
+      div.querySelectorAll('h2').forEach(el => {
+        el.style.fontSize = '18px';
+        el.style.fontWeight = 'bold';
+        el.style.margin = '18px 0 6px 0';
+      });
+      div.querySelectorAll('h3').forEach(el => {
+        el.style.fontSize = '15px';
+        el.style.fontWeight = 'bold';
+        el.style.margin = '14px 0 4px 0';
+      });
+    }
+
+    /* Recursively rebuild the tree, replacing every <ol>/<ul> with a flat
+       sequence of <p> elements that carry a text prefix ("1. " or "• ") and
+       4-NBSPs of indentation per nesting level. Non-list elements pass
+       through with their children rebuilt the same way, so a <blockquote>
+       containing a list still gets flattened correctly.                         */
+    function flattenListsToParagraphs(container) {
+      const rebuilt = [];
+      Array.from(container.childNodes).forEach(child => {
+        const result = transformForCopy(child, 0);
+        if (Array.isArray(result)) rebuilt.push(...result);
+        else if (result) rebuilt.push(result);
+      });
+      while (container.firstChild) container.removeChild(container.firstChild);
+      rebuilt.forEach(n => container.appendChild(n));
+    }
+
+    function transformForCopy(node, indent) {
+      // Text and other non-element nodes — clone as-is.
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        return node.cloneNode(true);
+      }
+
+      if (node.tagName === 'OL' || node.tagName === 'UL') {
+        return flattenSingleList(node, indent);
+      }
+
+      // Element pass-through: shallow clone, then rebuild children.
+      const clone = node.cloneNode(false);
+      Array.from(node.childNodes).forEach(child => {
+        const result = transformForCopy(child, indent);
+        if (Array.isArray(result)) result.forEach(r => clone.appendChild(r));
+        else if (result) clone.appendChild(result);
+      });
+      return clone;
+    }
+
+    function flattenSingleList(list, indent) {
+      const isOrdered = list.tagName === 'OL';
+      const startAttr = parseInt(list.getAttribute('start') || '1', 10);
+      const items = Array.from(list.children).filter(c => c.tagName === 'LI');
+      const out = [];
+      const indentStr = '    '.repeat(indent);
+
+      items.forEach((li, idx) => {
+        // Prefix wrapped in <strong> — the user wants numbers/bullets bold
+        // while descriptive text stays at normal weight.
+        const prefix = isOrdered
+          ? `<span style="font-weight: bold;">${startAttr + idx}.</span> `
+          : `<span style="font-weight: bold;">•</span> `;
+
+        // Separate the LI's inline content from any nested <ol>/<ul>.
+        // Inline content goes onto the prefix line; nested lists are emitted
+        // as their own paragraphs at indent+1 immediately after.
+        let inlineHtml = '';
+        const nestedLists = [];
+        Array.from(li.childNodes).forEach(child => {
+          if (child.nodeType === Node.ELEMENT_NODE && (child.tagName === 'OL' || child.tagName === 'UL')) {
+            nestedLists.push(child);
+          } else {
+            const tmp = document.createElement('span');
+            const transformed = transformForCopy(child, indent);
+            if (Array.isArray(transformed)) transformed.forEach(t => tmp.appendChild(t));
+            else if (transformed) tmp.appendChild(transformed);
+            inlineHtml += tmp.innerHTML;
+          }
+        });
+
+        const p = document.createElement('p');
+        // Tight paragraph spacing — lets the destination editor's default
+        // line height take over without us injecting blank lines.
+        p.style.margin = '2px 0';
+        p.style.padding = '0';
+        p.style.lineHeight = '1.5';
+        // Explicit weight + size override. Examly was auto-promoting the
+        // very last <p> to a heading-style (huge + bold). Forcing both inline
+        // pins the paragraph to body-text rendering everywhere.
+        p.style.fontWeight = 'normal';
+        p.style.fontSize = '14px';
+        p.style.fontFamily = 'inherit';
+        p.innerHTML = indentStr + prefix + inlineHtml;
+        out.push(p);
+
+        nestedLists.forEach(nl => {
+          out.push(...flattenSingleList(nl, indent + 1));
+        });
+      });
+
+      return out;
+    }
+
+    function render() {
+      const raw = markdownInput.value;
+      if (!raw.trim()) {
+        output.innerHTML = '<p class="text-slate-400 italic">Your formatted question will appear here.</p>';
+        return;
+      }
+      let html = marked.parse(normalizeMarkdown(raw));
+      html = postProcessHtml(html);
+      output.innerHTML = html;
+    }
+
+    markdownInput.addEventListener('input', render);
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        markdownInput.value = ev.target.result || '';
+        render();
+      };
+      reader.readAsText(file);
+      fileInput.value = '';
+    });
+
+    clearBtn.addEventListener('click', () => {
+      markdownInput.value = '';
+      render();
+      markdownInput.focus();
+    });
+
+    let toastTimer = null;
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 1400);
+    }
+
+    async function copyRichText() {
+      if (!output.innerHTML.trim() || output.querySelector('p.italic')) {
+        showToast('Nothing to copy');
+        return;
+      }
+      const html = buildCopyHtml();
+      const plain = output.innerText;
+
+      try {
+        if (navigator.clipboard && window.ClipboardItem) {
+          const item = new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([plain], { type: 'text/plain' })
+          });
+          await navigator.clipboard.write([item]);
+          showToast('Copied rich text!');
+          return;
+        }
+      } catch (err) { /* fall through to legacy */ }
+
+      try {
+        // Legacy fallback: temporarily inject the styled HTML, select, execCommand('copy').
+        const stage = document.createElement('div');
+        stage.contentEditable = 'true';
+        stage.style.position = 'fixed';
+        stage.style.left = '-9999px';
+        stage.innerHTML = html;
+        document.body.appendChild(stage);
+        const range = document.createRange();
+        range.selectNodeContents(stage);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        const ok = document.execCommand('copy');
+        sel.removeAllRanges();
+        document.body.removeChild(stage);
+        showToast(ok ? 'Copied rich text!' : 'Copy failed');
+      } catch (err) {
+        showToast('Copy failed');
+      }
+    }
+
+    async function copyMarkdown() {
+      const md = normalizeMarkdown(markdownInput.value);
+      if (!md) {
+        showToast('Nothing to copy');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(md);
+        showToast('Copied markdown!');
+      } catch (err) {
+        const ta = document.createElement('textarea');
+        ta.value = md;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast(ok ? 'Copied markdown!' : 'Copy failed');
+      }
+    }
+
+    copyRichBtn.addEventListener('click', copyRichText);
+    copyMdBtn.addEventListener('click', copyMarkdown);
+
+    /* Sample matches the exact format from the user's reference screenshot —
+       Books to Scrape, Playwright explicit synchronization. */
+    const SAMPLE = `**Playwright – Explicit Synchronization with \`waitForSelector\` on Books to Scrape**
+
+## Scenario
+
+You are practicing explicit synchronization techniques against the Books to Scrape website using Playwright. The site is a static catalogue of books spread across paginated listings, themed category pages, and individual product detail pages. Because every page is fully server-rendered, it is an ideal target for learning how to wait for an element to be present in the DOM before performing assertions or interactions against it.
+
+The focus of this problem is the deliberate, explicit form of waiting in which a script blocks until a specific element matching a structural pattern enters the page's DOM. Although Playwright performs auto-waiting for most locator operations, explicit element waits are exercised here so that you can observe and reason about the synchronization step itself. Tests also revisit familiar topics from earlier sessions — locating elements through CSS selector patterns, performing visibility assertions, navigating between pages, reading text and attribute values, and verifying URL and title strings.
+
+A single browser, context, and page are created once before the entire suite runs and torn down once after the suite completes. Each test is independent and begins by navigating to the URL it needs.
+
+## Website Under Test
+
+**Homepage:** \`https://books.toscrape.com\`
+**Mystery category:** \`https://books.toscrape.com/catalogue/category/books/mystery_3/index.html\`
+**Travel category:** \`https://books.toscrape.com/catalogue/category/books/travel_2/index.html\`
+
+## Task
+
+The test suite practices explicit element synchronization across the homepage, category listings, and a book detail page. Tests cover visibility assertions, element counts, navigation across pagination and category links, content readouts of titles and prices, URL and page title checks, and image attribute inspection.
+
+Implement the following 25 independent tests:
+
+1. Navigate to the homepage, wait for the book card elements identified by their shared CSS class to appear in the DOM, and verify the first card is visible
+2. Navigate to the homepage, explicitly wait for the book card elements identified by their shared CSS class and capture the returned element handle, and verify the handle is present
+3. Navigate to the homepage, wait for the title anchors that are descendants of the level-three heading nested inside each article element identified by its CSS class (compound selector combining the article tag with its CSS class plus descendant relationships) to appear in the DOM, and verify the first title link is visible
+4. Navigate to the homepage, wait for the price elements identified by their shared CSS class to appear in the DOM, and verify the first price element is visible
+5. Navigate to the homepage, wait for the star rating elements identified by their shared CSS class to appear in the DOM, and verify the first star rating is visible
+6. Navigate to the homepage, wait for the anchor that is a descendant of the next-page list item (compound selector combining the list-item tag with its CSS class plus a descendant anchor) to appear in the DOM, and verify it is visible
+7. Navigate to the homepage, wait for the category sidebar container identified by its CSS class to appear in the DOM, and verify the sidebar is visible
+8. Navigate to the homepage, wait for the book cards identified by their shared CSS class, count them, and verify the count equals 20
+9. Navigate to the homepage, wait for the price elements identified by their shared CSS class, count them, and verify the count equals 20
+10. Navigate to the homepage, wait for the star rating elements identified by their shared CSS class, count them, and verify the count equals 20
+11. Navigate to the homepage, wait for the anchors that are descendants of the list-item tags nested inside the category sidebar identified by its CSS class (descendant relationship combining the sidebar class with list-item and anchor tags), count them, and verify the count is greater than zero
+12. Navigate to the homepage, wait for the breadcrumb container identified by its CSS class to appear in the DOM, and verify it is visible
+13. Navigate to the homepage, wait for the next-page anchor located via the descendant relationship between the next-page list-item compound selector and a child anchor, click it, wait for the book cards identified by their shared CSS class on the new page, and verify the first book card is visible
+14. Navigate to the homepage, click the next-page anchor located via the next-page list-item compound selector and its descendant anchor, wait for the book cards identified by their shared CSS class on the next page, and verify the page URL contains "catalogue"
+15. Navigate to the Mystery category URL, wait for the book cards identified by their shared CSS class, and verify the first card is visible
+16. Navigate to the Mystery category URL, wait for the book cards identified by their shared CSS class, count them, and verify the count is greater than zero
+17. Navigate to the Travel category URL, wait for the book cards identified by their shared CSS class, and verify the first card is visible
+18. Navigate to the homepage, wait for the title anchors located via the compound article-tag-with-class selector and the descendant heading and anchor, read the inner text of the first title, and verify its trimmed length is greater than zero
+19. Navigate to the homepage, wait for the price elements identified by their shared CSS class, read the inner text of the first price, and verify it contains the pound sign "£"
+20. Navigate to the homepage, wait for the image tags that are descendants of each book card identified by its CSS class (descendant relationship between a CSS class and the image tag), and verify the first thumbnail is visible
+21. Navigate to the homepage, wait for the image tags that are descendants of each book card identified by its CSS class, read the source attribute of the first image, and verify it is not null
+22. Navigate to the homepage, wait for the link anchors via the compound book-card-with-class selector to the detail page article container identified by its CSS class, click the first link, wait for the book detail article container located via the compound selector combining the article tag with its CSS class to appear in the DOM, and verify the detail article is visible
+23. Navigate to the homepage, wait for the title-level anchors, read the page title, and verify the lowercased title contains "books"
+24. Navigate to the homepage, verify the page URL contains "books.toscrape.com"
+25. Navigate to the homepage, wait for the level-one heading identified by its tag name, and verify it is visible
+
+## Important Notes (Mandatory)
+
+- Use lifecycle hooks that run once before all tests and once after all tests for the browser lifecycle — do not use serial \`describe\` blocks
+- Do not use per-test setup or teardown hooks
+- Each test must navigate to the required URL at the start of its own body
+- For test 2, capture the return value of the explicit element wait and verify the handle is present
+- For the page title check in test 23, perform a case-insensitive comparison against the word "books"
+- Use TypeScript exclusively
+
+## Required Test Cases
+
+**1. \`homepage_loads\`**
+Verify the first book card is visible on the homepage after an explicit element wait.
+- Navigate to the Books to Scrape homepage
+- Wait for the book card elements identified by their shared CSS class to appear in the DOM
+- Verify that the first book card is visible
+
+**2. \`waitForSelector_returns_element\`**
+Verify the call to wait returns an element handle.
+- Navigate to the homepage
+- Explicitly wait for the book card elements identified by their shared CSS class and store the returned element handle
+- Verify that the returned handle is present
+
+**3. \`book_title_visible_after_wait\`**
+Verify the first book title link is visible after an explicit element wait.
+- Navigate to the homepage
+- Wait for the title anchors that are descendants of the level-three heading nested inside each article element identified by its CSS class (compound selector combining the article tag with its CSS class plus descendant relationships) to appear in the DOM
+- Verify the first title link is visible
+
+**4. \`price_visible_after_wait\`**
+Verify the first price element is visible after an explicit element wait.
+- Navigate to the homepage
+- Wait for the price elements identified by their shared CSS class to appear in the DOM
+- Verify that the first price element is visible
+
+**5. \`star_rating_visible_after_wait\`**
+Verify the first star rating element is visible after an explicit element wait.
+- Navigate to the homepage
+- Wait for the star rating elements identified by their shared CSS class to appear in the DOM
+- Verify that the first star rating is visible
+
+## Question
+
+- Tests 1–7 confirm that explicit element waits successfully synchronize with various page elements before visibility checks
+- Test 2 confirms that the explicit element wait yields an element handle that can be stored and verified
+- Tests 8–12 confirm that element counts match expected values after the DOM has settled
+- Tests 13–17 confirm that navigation combined with explicit element waits works correctly across pagination and category pages
+- Tests 18–22 confirm that book content — title text, price text, thumbnail image, and detail page — is accessible after waiting
+- Tests 23–25 confirm URL correctness, page title content, and heading visibility
+
+## Playwright project execute instructions
+
+1. Running existing code
+   - \`npm install\`
+   - \`npx playwright install\`
+
+2. Ensure all Playwright commands are executed inside a folder where the \`package.json\` file is present.
+
+3. Fix browser installation or dependency issues if they occur. (If you face any issue / re-entering the project)
+   - Run the following command:
+     - \`npx playwright install\`
+   (Note: This command may also be suggested automatically by the terminal.)
+
+4. You can use Playwright commands to:
+   - Run all tests at once: \`npx playwright test\`
+   - Run tests from a specific file: \`npx playwright test tests/example.spec.ts\`
+   - Run tests in UI mode: \`npx playwright test --ui\`
+   - Run tests in headed or headless mode: \`npx playwright test --headed\` / \`npx playwright test --headless\`
+
+5. Configure and use a single browser for running tests.
+   - Preferably use "chromium."
+   - This can be configured either in the configuration file or through the command line.
+
+6. For CI commands involving browser display/running tests in UI mode / debug / headed etc., ensure VNC setup is done as mentioned below.
+
+7. VNC setup instructions:
+   - Open port 5900 → select \`vnc.html\` → click Connect to visualize the output.
+`;
+
+    sampleBtn.addEventListener('click', () => {
+      markdownInput.value = SAMPLE;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
