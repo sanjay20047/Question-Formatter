@@ -494,6 +494,11 @@
         c.style.padding = '1px 4px';
         c.style.borderRadius = '3px';
         c.style.fontSize = '0.95em';
+        // Inherit weight from parent. Without this, test-case names like
+        // `confirm_button_visible` (which are `<code>` inside `<strong>` from
+        // **3. `name`** markdown) render normal-weight because Examly's base
+        // stylesheet has `code { font-weight: normal }`.
+        c.style.fontWeight = 'inherit';
       });
       div.querySelectorAll('pre').forEach(p => {
         p.style.background = '#f3f4f6';
@@ -563,22 +568,39 @@
     }
 
     function flattenSingleList(list, indent) {
+      // Old approach: emit one <p> per <li>. That made every bullet a separate
+      // paragraph, and Examly stacked its own margins on top of mine, producing
+      // 3-line gaps between sections. New approach: collect every line (including
+      // nested-list lines) into a single <p> joined by <br>. The destination
+      // editor sees one tight block per list, so the only gap that remains is
+      // the natural paragraph break between the list and the surrounding text.
+      const lines = [];
+      collectListLines(list, indent, lines);
+
+      const p = document.createElement('p');
+      // !important inline overrides destination-editor default <p> margins
+      // — without it Examly was injecting ~1em top/bottom regardless of
+      // our inline values.
+      p.setAttribute('style',
+        'margin: 0 !important; padding: 0 !important; line-height: 1.6; ' +
+        'font-weight: normal; font-size: 14px; font-family: inherit;');
+      p.innerHTML = lines.join('<br>');
+      return [p];
+    }
+
+    function collectListLines(list, indent, lines) {
       const isOrdered = list.tagName === 'OL';
       const startAttr = parseInt(list.getAttribute('start') || '1', 10);
       const items = Array.from(list.children).filter(c => c.tagName === 'LI');
-      const out = [];
       const indentStr = '    '.repeat(indent);
 
       items.forEach((li, idx) => {
-        // Prefix wrapped in <strong> — the user wants numbers/bullets bold
-        // while descriptive text stays at normal weight.
+        // Bold prefix via styled <span> rather than <strong>/<b>. Some editors
+        // treat leading <strong> as a heading marker.
         const prefix = isOrdered
           ? `<span style="font-weight: bold;">${startAttr + idx}.</span> `
           : `<span style="font-weight: bold;">•</span> `;
 
-        // Separate the LI's inline content from any nested <ol>/<ul>.
-        // Inline content goes onto the prefix line; nested lists are emitted
-        // as their own paragraphs at indent+1 immediately after.
         let inlineHtml = '';
         const nestedLists = [];
         Array.from(li.childNodes).forEach(child => {
@@ -593,27 +615,12 @@
           }
         });
 
-        const p = document.createElement('p');
-        // Tight paragraph spacing — lets the destination editor's default
-        // line height take over without us injecting blank lines.
-        p.style.margin = '2px 0';
-        p.style.padding = '0';
-        p.style.lineHeight = '1.5';
-        // Explicit weight + size override. Examly was auto-promoting the
-        // very last <p> to a heading-style (huge + bold). Forcing both inline
-        // pins the paragraph to body-text rendering everywhere.
-        p.style.fontWeight = 'normal';
-        p.style.fontSize = '14px';
-        p.style.fontFamily = 'inherit';
-        p.innerHTML = indentStr + prefix + inlineHtml;
-        out.push(p);
+        lines.push(indentStr + prefix + inlineHtml);
 
-        nestedLists.forEach(nl => {
-          out.push(...flattenSingleList(nl, indent + 1));
-        });
+        // Nested lists: recurse with indent+1 into the same lines array so
+        // they get emitted as additional <br>-separated rows in the same <p>.
+        nestedLists.forEach(nl => collectListLines(nl, indent + 1, lines));
       });
-
-      return out;
     }
 
     function render() {
