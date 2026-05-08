@@ -162,13 +162,51 @@
     <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
       <div>
         <h1 class="text-xl font-bold text-slate-900">Question Formatter</h1>
-        <p class="text-xs text-slate-500 mt-0.5">Turn raw Playwright question markdown into a clean, copy-ready document.</p>
+        <p class="text-xs text-slate-500 mt-0.5">Paste a sample of your target format, then your markdown — the output is structured to match.</p>
       </div>
       <div class="text-xs text-slate-400">Local · No data leaves your browser</div>
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto px-6 py-6">
+  <main class="max-w-7xl mx-auto px-6 py-6 space-y-6">
+
+    <!-- Sample / target-format section -->
+    <section id="sampleSection" class="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col">
+      <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+        <div class="flex items-center gap-2">
+          <h2 class="font-semibold text-slate-900">Sample format</h2>
+          <span class="text-xs text-slate-500">— defines the target structure</span>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <select id="presetSelect"
+                  class="text-xs font-medium px-2.5 py-1.5 rounded-md bg-slate-100 border border-slate-200 text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/10">
+          </select>
+          <button id="savePresetBtn"
+                  class="text-xs font-medium px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition">
+            Save as preset
+          </button>
+          <button id="deletePresetBtn"
+                  class="text-xs font-medium px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+            Delete preset
+          </button>
+          <button id="sampleToggleBtn"
+                  class="text-xs font-medium px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition"
+                  aria-expanded="true">
+            Hide
+          </button>
+        </div>
+      </div>
+      <div id="sampleBody" class="p-5 flex flex-col">
+        <label for="sampleInput" class="text-xs font-medium text-slate-600 mb-1.5">Paste a sample of how you want the output to look</label>
+        <textarea id="sampleInput"
+                  placeholder="# Title&#10;&#10;## Scenario&#10;&#10;Description...&#10;&#10;## Required Test Cases&#10;&#10;**1. `name`**&#10;Description.&#10;- step 1&#10;- step 2"
+                  class="w-full resize-y rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400"
+                  style="min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.875rem; line-height: 1.55;"></textarea>
+        <p id="detectedStatus" class="text-xs text-slate-500 mt-2">Detected: —</p>
+      </div>
+    </section>
+
+    <!-- Input + Output 2-column grid -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
       <section class="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col">
@@ -184,18 +222,14 @@
                     class="text-xs font-medium px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
               Clear
             </button>
-            <button id="sampleBtn"
-                    class="text-xs font-medium px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
-              Load sample
-            </button>
           </div>
         </div>
         <div class="p-5 flex-1 flex flex-col">
-          <label for="markdownInput" class="text-xs font-medium text-slate-600 mb-1.5">Paste your markdown below</label>
+          <label for="markdownInput" class="text-xs font-medium text-slate-600 mb-1.5">Paste your question markdown below</label>
           <textarea id="markdownInput"
                     placeholder="# Your question title&#10;&#10;## Scenario&#10;..."
                     class="w-full flex-1 min-h-[480px] resize-y rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400"></textarea>
-          <p class="text-xs text-slate-500 mt-2">Tip: tight lists, code spans, and bold titles are all preserved on copy.</p>
+          <p class="text-xs text-slate-500 mt-2">Output is auto-structured to match the Sample above.</p>
         </div>
       </section>
 
@@ -229,11 +263,19 @@
     const markdownInput = document.getElementById('markdownInput');
     const fileInput = document.getElementById('fileInput');
     const clearBtn = document.getElementById('clearBtn');
-    const sampleBtn = document.getElementById('sampleBtn');
     const output = document.getElementById('output');
     const copyRichBtn = document.getElementById('copyRichBtn');
     const copyMdBtn = document.getElementById('copyMdBtn');
     const toast = document.getElementById('toast');
+
+    // Sample / preset DOM
+    const sampleInput = document.getElementById('sampleInput');
+    const sampleBody = document.getElementById('sampleBody');
+    const sampleToggleBtn = document.getElementById('sampleToggleBtn');
+    const presetSelect = document.getElementById('presetSelect');
+    const savePresetBtn = document.getElementById('savePresetBtn');
+    const deletePresetBtn = document.getElementById('deletePresetBtn');
+    const detectedStatus = document.getElementById('detectedStatus');
 
     marked.setOptions({
       gfm: true,
@@ -360,19 +402,116 @@
           "• ". The editor sees plain paragraphs, can't fragment them, and the
           user sees a numbered/bulleted layout in the destination thanks to
           the prefix character.                                                  */
-    function buildCopyHtml() {
+    function buildCopyHtml(flags) {
+      flags = flags || defaultFlags();
       const div = document.createElement('div');
       div.innerHTML = output.innerHTML;
 
       applyCopyInlineStyles(div);
-      convertTablesToPre(div);          // tables → monospace ASCII <pre>
-      flattenListsToParagraphs(div);    // <ul>/<ol> → single <p> with <br> rows
-      mergeTestCaseSections(div);       // header + description + bullets → one <p>
-      forceZeroBlockMargins(div);       // strip all block margins
-      insertBlankLineSpacers(div);      // <p><br></p> between every adjacent pair
+      if (!flags.keepTables) convertTablesToPre(div);
+      if (flags.flattenLists) flattenListsToParagraphs(div, flags);
+      if (flags.mergeTestCaseSections) mergeTestCaseSections(div);
+      forceZeroBlockMargins(div);
+      for (let i = 0; i < flags.blankLineSpacers; i++) {
+        insertBlankLineSpacers(div);
+      }
       appendFinalSentinels(div);
 
       return div.innerHTML;
+    }
+
+    /* ---------- Flags ----------
+       Flags are derived from the Sample by detectSampleFlags(). When the
+       Sample is empty we fall back to the "Playwright" defaults that the
+       tool was originally tuned for, so behaviour doesn't regress.          */
+    function defaultFlags() {
+      return {
+        keepTables: false,
+        flattenLists: true,
+        mergeTestCaseSections: true,
+        boldPrefix: true,
+        blankLineSpacers: 1,
+      };
+    }
+
+    function detectSampleFlags(sampleMarkdown) {
+      if (!sampleMarkdown || !sampleMarkdown.trim()) return defaultFlags();
+
+      const md = normalizeMarkdown(sampleMarkdown);
+      const tmp = document.createElement('div');
+      tmp.innerHTML = marked.parse(md);
+
+      const keepTables = tmp.querySelectorAll('table').length > 0;
+
+      const hasRealLists = tmp.querySelectorAll('ul, ol').length > 0;
+      let flatListLineCount = 0;
+      tmp.querySelectorAll('p').forEach(p => {
+        const txt = (p.textContent || '').trim();
+        if (/^\s*(?:\d+\.|[-•])\s+/.test(txt)) flatListLineCount++;
+      });
+      const flattenLists = (!hasRealLists && flatListLineCount >= 2)
+        ? true
+        : (hasRealLists ? false : defaultFlags().flattenLists);
+
+      let starterCount = 0;
+      tmp.querySelectorAll('p').forEach(p => {
+        const first = p.firstElementChild;
+        if (first && (first.tagName === 'STRONG' || first.tagName === 'B')) {
+          starterCount++;
+        }
+      });
+      const mergeTestCaseSections = starterCount >= 2;
+
+      let boldPrefix = defaultFlags().boldPrefix;
+      if (flattenLists) {
+        let plain = 0, bold = 0;
+        tmp.querySelectorAll('p').forEach(p => {
+          const txt = (p.textContent || '').trim();
+          if (!/^\s*(?:\d+\.|[-•])\s+/.test(txt)) return;
+          const first = p.firstElementChild;
+          if (first && /^(STRONG|B)$/.test(first.tagName)) bold++;
+          else if (first && first.tagName === 'SPAN' &&
+                   /font-weight\s*:\s*(?:bold|[6-9]00)/i.test(first.getAttribute('style') || '')) {
+            bold++;
+          } else {
+            plain++;
+          }
+        });
+        if (bold + plain > 0) boldPrefix = bold >= plain;
+      }
+
+      const blankLineSpacers = inferBlankLineMode(md);
+      return { keepTables, flattenLists, mergeTestCaseSections, boldPrefix, blankLineSpacers };
+    }
+
+    function inferBlankLineMode(md) {
+      const lines = md.split('\n');
+      const runs = [];
+      let i = 0;
+      while (i < lines.length) {
+        if (lines[i].trim() === '') {
+          let run = 0;
+          while (i < lines.length && lines[i].trim() === '') { run++; i++; }
+          if (i < lines.length) {
+            let hadPrior = false;
+            for (let j = i - run - 1; j >= 0; j--) {
+              if (lines[j].trim() !== '') { hadPrior = true; break; }
+            }
+            if (hadPrior) runs.push(run);
+          }
+        } else { i++; }
+      }
+      if (!runs.length) return defaultFlags().blankLineSpacers;
+      const counts = {};
+      runs.forEach(r => { counts[r] = (counts[r] || 0) + 1; });
+      let best = 1, bestCount = -1;
+      Object.keys(counts).forEach(k => {
+        const n = parseInt(k, 10);
+        if (counts[k] > bestCount && n >= 0 && n <= 2) {
+          best = n; bestCount = counts[k];
+        }
+      });
+      return best;
     }
 
     /* The structural fix for "2 lines of gap" between a test-case header and
@@ -551,46 +690,6 @@
       });
     }
 
-    /* After every h1/h2/h3, insert an empty <p> with a <br> inside. Editors
-       render this as a blank line, giving the user the requested one-line gap
-       between section headings ("Scenario", "Task", …) and their content.     */
-    function addHeadingSpacers(container) {
-      // !important inline overrides Examly's default <p> margins. Without
-      // it, the spacer's own margin stacks on top of the <br>'s line height
-      // and the gap becomes 2+ lines instead of the intended 1.
-      const makeSpacer = () => {
-        const s = document.createElement('p');
-        s.innerHTML = '<br>';
-        s.setAttribute('style',
-          'margin: 0 !important; padding: 0 !important; line-height: 1.4; font-size: 14px;');
-        return s;
-      };
-
-      const isSpacer = (el) =>
-        el && el.tagName === 'P' &&
-        el.childNodes.length === 1 &&
-        el.firstChild && el.firstChild.tagName === 'BR' &&
-        el.textContent.trim() === '';
-      const isHeading = (el) => el && /^H[1-6]$/.test(el.tagName);
-
-      // Spacer AFTER every heading — blank line between heading and content.
-      container.querySelectorAll('h1, h2, h3').forEach(h => {
-        h.insertAdjacentElement('afterend', makeSpacer());
-      });
-
-      // Spacer BEFORE every h2/h3 — blank line above each section heading.
-      // This is what fixes the "table butts up against Task heading" gap.
-      // Skip if the previous block is already a heading or its trailing
-      // spacer, so consecutive headings (e.g. h1 then h2) don't get a
-      // double blank line between them.
-      container.querySelectorAll('h2, h3').forEach(h => {
-        const prev = h.previousElementSibling;
-        if (!prev) return;
-        if (isHeading(prev)) return;
-        if (isSpacer(prev) && isHeading(prev.previousElementSibling)) return;
-        h.insertAdjacentElement('beforebegin', makeSpacer());
-      });
-    }
 
     function applyCopyInlineStyles(div) {
       div.querySelectorAll('table').forEach(t => {
@@ -657,10 +756,11 @@
        4-NBSPs of indentation per nesting level. Non-list elements pass
        through with their children rebuilt the same way, so a <blockquote>
        containing a list still gets flattened correctly.                         */
-    function flattenListsToParagraphs(container) {
+    function flattenListsToParagraphs(container, flags) {
+      flags = flags || defaultFlags();
       const rebuilt = [];
       Array.from(container.childNodes).forEach(child => {
-        const result = transformForCopy(child, 0);
+        const result = transformForCopy(child, 0, flags);
         if (Array.isArray(result)) rebuilt.push(...result);
         else if (result) rebuilt.push(result);
       });
@@ -668,35 +768,33 @@
       rebuilt.forEach(n => container.appendChild(n));
     }
 
-    function transformForCopy(node, indent) {
-      // Text and other non-element nodes — clone as-is.
+    function transformForCopy(node, indent, flags) {
+      flags = flags || defaultFlags();
       if (node.nodeType !== Node.ELEMENT_NODE) {
         return node.cloneNode(true);
       }
 
       if (node.tagName === 'OL' || node.tagName === 'UL') {
-        return flattenSingleList(node, indent);
+        return flattenSingleList(node, indent, flags);
       }
 
-      // Element pass-through: shallow clone, then rebuild children.
       const clone = node.cloneNode(false);
       Array.from(node.childNodes).forEach(child => {
-        const result = transformForCopy(child, indent);
+        const result = transformForCopy(child, indent, flags);
         if (Array.isArray(result)) result.forEach(r => clone.appendChild(r));
         else if (result) clone.appendChild(result);
       });
       return clone;
     }
 
-    function flattenSingleList(list, indent) {
-      // Old approach: emit one <p> per <li>. That made every bullet a separate
-      // paragraph, and Examly stacked its own margins on top of mine, producing
-      // 3-line gaps between sections. New approach: collect every line (including
-      // nested-list lines) into a single <p> joined by <br>. The destination
-      // editor sees one tight block per list, so the only gap that remains is
-      // the natural paragraph break between the list and the surrounding text.
+    function flattenSingleList(list, indent, flags) {
+      flags = flags || defaultFlags();
+      // Collect every list item (and any nested-list items) into a single <p>
+      // joined by <br>. Examly stacks its own paragraph margins on every <p>,
+      // so packing the whole list into one paragraph is the most reliable way
+      // to keep the bullets visually adjacent.
       const lines = [];
-      collectListLines(list, indent, lines);
+      collectListLines(list, indent, lines, flags);
 
       const p = document.createElement('p');
       // !important inline overrides destination-editor default <p> margins
@@ -709,18 +807,21 @@
       return [p];
     }
 
-    function collectListLines(list, indent, lines) {
+    function collectListLines(list, indent, lines, flags) {
+      flags = flags || defaultFlags();
       const isOrdered = list.tagName === 'OL';
       const startAttr = parseInt(list.getAttribute('start') || '1', 10);
       const items = Array.from(list.children).filter(c => c.tagName === 'LI');
       const indentStr = '    '.repeat(indent);
 
       items.forEach((li, idx) => {
-        // Bold prefix via styled <span> rather than <strong>/<b>. Some editors
-        // treat leading <strong> as a heading marker.
-        const prefix = isOrdered
-          ? `<span style="font-weight: bold;">${startAttr + idx}.</span> `
-          : `<span style="font-weight: bold;">•</span> `;
+        // Bold prefix via styled <span> when the sample's flags say so;
+        // plain prefix otherwise. <span> avoids editors mistaking <strong>
+        // for a heading marker.
+        const tok = isOrdered ? `${startAttr + idx}.` : '•';
+        const prefix = flags.boldPrefix
+          ? `<span style="font-weight: bold;">${tok}</span> `
+          : `${tok} `;
 
         let inlineHtml = '';
         const nestedLists = [];
@@ -729,7 +830,7 @@
             nestedLists.push(child);
           } else {
             const tmp = document.createElement('span');
-            const transformed = transformForCopy(child, indent);
+            const transformed = transformForCopy(child, indent, flags);
             if (Array.isArray(transformed)) transformed.forEach(t => tmp.appendChild(t));
             else if (transformed) tmp.appendChild(transformed);
             inlineHtml += tmp.innerHTML;
@@ -740,7 +841,7 @@
 
         // Nested lists: recurse with indent+1 into the same lines array so
         // they get emitted as additional <br>-separated rows in the same <p>.
-        nestedLists.forEach(nl => collectListLines(nl, indent + 1, lines));
+        nestedLists.forEach(nl => collectListLines(nl, indent + 1, lines, flags));
       });
     }
 
@@ -754,6 +855,10 @@
       html = postProcessHtml(html);
       output.innerHTML = html;
     }
+
+    // Cached flags derived from the current Sample; recomputed when the Sample
+    // changes or a different preset is selected. Used by copyRichText().
+    let currentFlags = defaultFlags();
 
     markdownInput.addEventListener('input', render);
 
@@ -788,7 +893,7 @@
         showToast('Nothing to copy');
         return;
       }
-      const html = buildCopyHtml();
+      const html = buildCopyHtml(currentFlags);
       const plain = output.innerText;
 
       try {
@@ -979,11 +1084,146 @@ Verify the first star rating element is visible after an explicit element wait.
    - Open port 5900 → select \`vnc.html\` → click Connect to visualize the output.
 `;
 
-    sampleBtn.addEventListener('click', () => {
-      markdownInput.value = SAMPLE;
-      render();
-    });
+    /* ---------- Preset store (localStorage) ----------
+       Schema: { presets: [{name, sampleText}], selected: name, sampleCollapsed }.
+       Seeded on first run with a "Playwright" preset (today's SAMPLE) and an
+       empty "CloudLab" preset for the user to fill in.                       */
+    const STORAGE_KEY = 'qf:presets';
 
+    function loadStore() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (!obj || !Array.isArray(obj.presets)) return null;
+        return obj;
+      } catch (e) { return null; }
+    }
+
+    function saveStore(store) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); }
+      catch (e) { /* localStorage unavailable — ignore */ }
+    }
+
+    function seedDefaults() {
+      return {
+        presets: [
+          { name: 'Playwright', sampleText: SAMPLE },
+          { name: 'CloudLab', sampleText: '' },
+        ],
+        selected: 'Playwright',
+        sampleCollapsed: false,
+      };
+    }
+
+    function initSampleSection() {
+      let store = loadStore();
+      if (!store) { store = seedDefaults(); saveStore(store); }
+
+      function refreshPresetDropdown() {
+        presetSelect.innerHTML = '';
+        store.presets.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.name;
+          opt.textContent = p.name;
+          if (p.name === store.selected) opt.selected = true;
+          presetSelect.appendChild(opt);
+        });
+      }
+      refreshPresetDropdown();
+
+      function findPreset(name) {
+        return store.presets.find(p => p.name === name) || store.presets[0];
+      }
+      const initial = findPreset(store.selected);
+      sampleInput.value = initial ? initial.sampleText : '';
+      recomputeFlagsFromSample();
+
+      applyCollapsed(store.sampleCollapsed);
+
+      let sampleDebounce = null;
+      sampleInput.addEventListener('input', () => {
+        clearTimeout(sampleDebounce);
+        sampleDebounce = setTimeout(() => {
+          recomputeFlagsFromSample();
+          const p = findPreset(store.selected);
+          if (p) { p.sampleText = sampleInput.value; saveStore(store); }
+          render();
+        }, 200);
+      });
+
+      presetSelect.addEventListener('change', () => {
+        const name = presetSelect.value;
+        store.selected = name;
+        saveStore(store);
+        const p = findPreset(name);
+        sampleInput.value = p ? p.sampleText : '';
+        recomputeFlagsFromSample();
+        render();
+      });
+
+      savePresetBtn.addEventListener('click', () => {
+        const name = (prompt('Save current sample as preset. Name?') || '').trim();
+        if (!name) return;
+        const existing = store.presets.find(p => p.name === name);
+        if (existing) {
+          if (!confirm(`Overwrite preset "${name}"?`)) return;
+          existing.sampleText = sampleInput.value;
+        } else {
+          store.presets.push({ name, sampleText: sampleInput.value });
+        }
+        store.selected = name;
+        saveStore(store);
+        refreshPresetDropdown();
+        showToast('Preset saved');
+      });
+
+      deletePresetBtn.addEventListener('click', () => {
+        if (store.presets.length <= 1) {
+          showToast('Cannot delete the last preset');
+          return;
+        }
+        const name = store.selected;
+        if (!confirm(`Delete preset "${name}"?`)) return;
+        store.presets = store.presets.filter(p => p.name !== name);
+        store.selected = store.presets[0].name;
+        saveStore(store);
+        refreshPresetDropdown();
+        const p = findPreset(store.selected);
+        sampleInput.value = p ? p.sampleText : '';
+        recomputeFlagsFromSample();
+        render();
+        showToast('Preset deleted');
+      });
+
+      sampleToggleBtn.addEventListener('click', () => {
+        store.sampleCollapsed = !store.sampleCollapsed;
+        saveStore(store);
+        applyCollapsed(store.sampleCollapsed);
+      });
+
+      function applyCollapsed(collapsed) {
+        sampleBody.style.display = collapsed ? 'none' : '';
+        sampleToggleBtn.textContent = collapsed ? 'Show' : 'Hide';
+        sampleToggleBtn.setAttribute('aria-expanded', String(!collapsed));
+      }
+    }
+
+    function recomputeFlagsFromSample() {
+      currentFlags = detectSampleFlags(sampleInput.value);
+      renderDetectedStatus(currentFlags);
+    }
+
+    function renderDetectedStatus(flags) {
+      const yn = (b) => b ? '✓' : '✗';
+      detectedStatus.textContent =
+        `Detected: tables ${yn(flags.keepTables)} · flat-lists ${yn(flags.flattenLists)} ` +
+        `· merge-sections ${yn(flags.mergeTestCaseSections)} · bold-prefix ${yn(flags.boldPrefix)} ` +
+        `· blank-lines ${flags.blankLineSpacers}`;
+    }
+
+    // Boot
+    initSampleSection();
     render();
   </script>
 </body>
