@@ -207,7 +207,8 @@
     const asBullet = new Array(lines.length).fill(false);
     let i = 0;
     while (i < lines.length) {
-      if (types[i] === 'LABEL_ONLY') {
+      const t = types[i];
+      if (t === 'LABEL_ONLY' || t === 'LABEL_VALUE') {
         const j0 = i + 1;
         if (j0 >= lines.length || types[j0] === 'BLANK') {
           // Blank line right after the label — content is a separate
@@ -215,8 +216,20 @@
           i = j0;
           continue;
         }
+        // Which classifications can be part of the bullet group?
+        // - After LABEL_ONLY ("Storage Account:"): PARAGRAPH lines (e.g.
+        //   "Deploy a Log Analytics workspace.") AND LABEL_VALUE lines
+        //   (e.g. "Name: novalake") are both fields under the section.
+        // - After LABEL_VALUE ("Instruction: Configure..."): only PARAGRAPH
+        //   lines are bullets (Task 5's Navigate/Select/Click steps).
+        //   A following LABEL_VALUE means a new sibling section, so we
+        //   stop and treat THAT line as its own label later.
+        const stopOnLabelValue = (t === 'LABEL_VALUE');
         let j = j0;
-        while (j < lines.length && types[j] !== 'BLANK' && types[j] !== 'LABEL_ONLY') {
+        while (j < lines.length) {
+          const tt = types[j];
+          if (tt === 'BLANK' || tt === 'LABEL_ONLY') break;
+          if (stopOnLabelValue && tt === 'LABEL_VALUE') break;
           j++;
         }
         if (j - j0 >= 2) {
@@ -243,14 +256,14 @@
           out.push(`${indent}**${trimmed}**`);
           break;
         case 'LABEL_VALUE':
+          // Bold the label part (everything up to and including the first
+          // colon) in both cases. The user's reference (image 3) shows
+          // field labels inside bullet groups as bold too — e.g.
+          //   • **Name:** ls_meta_blob
+          //   • **Type:** Azure Blob Storage
           if (asBullet[k]) {
-            // Field inside a bullet group — keep "Field: value" plain,
-            // just add the bullet marker. Matches the user's reference
-            // (`- Name: novalake`, label not separately bolded).
-            out.push(`${indent}- ${trimmed}`);
+            out.push(`${indent}- ${trimmed.replace(/^([^:]+:)/, '**$1**')}`);
           } else {
-            // Top-level "Label: value" line — bold just the label part
-            // (everything up to and including the first colon).
             out.push(`${indent}${trimmed.replace(/^([^:]+:)/, '**$1**')}`);
           }
           break;
@@ -559,7 +572,14 @@
     const isOrdered = list.tagName === 'OL';
     const startAttr = parseInt(list.getAttribute('start') || '1', 10);
     const items = Array.from(list.children).filter(c => c.tagName === 'LI');
-    const indentStr = NBSP.repeat(indent * 4);
+    // Unordered (bullet) lists get a base indent of 4 NBSPs so the • markers
+    // sit slightly inset from their section label — matching the CloudLab
+    // reference where Storage Account: / Diagnostic Setting: have visually
+    // indented field bullets under them. Ordered (numbered) lists stay
+    // flush-left so the Playwright Task list (1. … 25.) looks the same as
+    // before. Nested lists add another 4 NBSPs per level.
+    const baseIndent = isOrdered ? 0 : 1;
+    const indentStr = NBSP.repeat((indent + baseIndent) * 4);
     const out = [];
 
     items.forEach((li, idx) => {
